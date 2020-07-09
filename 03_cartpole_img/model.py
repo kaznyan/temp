@@ -52,7 +52,7 @@ class QNet(nn.Module):
         ###     Q値を推論するNNのtargetを rt + γ max(Q(s(t+1), a')) とすることでうまく学習できる
         loss = F.mse_loss(pred, target.detach())
         optimizer.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)
         optimizer.step()
         return loss
 
