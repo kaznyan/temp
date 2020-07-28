@@ -32,6 +32,8 @@ def update_target_model(online_net, target_net):
     # target_net を online_net と同じものにする
     target_net.load_state_dict(online_net.state_dict())
 
+device = "cpu"
+
 def main():
     env = gym.make(env_name)
     env.seed(500)
@@ -39,7 +41,7 @@ def main():
 
     ### NNのIn-Outは環境によって異なる
     # num_inputs = env.observation_space.shape[0]
-    num_inputs = 512
+    num_inputs = 1024
     num_actions = env.action_space.n
     print('state size:', num_inputs)
     print('action size:', num_actions)
@@ -63,6 +65,7 @@ def main():
     # pre_model.fc = nn.Identity()
     pre_model = models.squeezenet1_0(pretrained=True)
     pre_model.classifier = nn.AdaptiveAvgPool2d((1,1))
+    pre_model.to(device)
 
     def state_to_feature(state):
         state_img = render_cv2img(state[0], state[2])
@@ -77,8 +80,11 @@ def main():
         state_feature = pre_model(state_img_rgb_tensor)
         return state_feature
 
+    ### メモリの保存場所（改修中）
+    memory_dir = "memory/"
+    memory = Memory(replay_memory_capacity, memory_dir)
+
     ### 学習前の初期設定
-    memory = Memory(replay_memory_capacity)
     running_score = 0
     epsilon = 1.0
     steps = 0
@@ -95,15 +101,20 @@ def main():
         ### state = [[2048次元のベクトル]]
         state = state_to_feature(state)
 
+        ### 前の時間の情報が無いときついため、それを入れるためのもの　最初はstateと同値でよさそう
+        previous_state = state
+
         while not done:
             steps += 1
 
             ### 行動の決定はtarget_netで行う
-            action = get_action(state, target_net, epsilon, env)
+            previous_present_state = torch.cat((previous_state, state), 1)
+            action = get_action(previous_present_state, target_net, epsilon, env)
 
             ### 次の状態の観測、報酬の獲得
             next_state, reward, done, _ = env.step(action)
             next_state = state_to_feature(next_state)
+            present_next_state = torch.cat((state, next_state), 1)
 
             ### わかりにくいので書き変えた
             if done:
@@ -118,12 +129,10 @@ def main():
             ### memoryに記録
             action_one_hot = np.zeros(2)
             action_one_hot[action] = 1
-            memory.push(state, next_state, action_one_hot, reward, mask)
+            memory.push(previous_present_state, present_next_state, action_one_hot, reward, mask)
 
             ### rewardは基本的に1
             score += reward ### そのepisodeで何ステップ行ったかを記録するためだけのもの
-
-            state = next_state
 
             if steps > initial_exploration:
                 epsilon -= 0.00005
@@ -136,6 +145,10 @@ def main():
                 ### たまにtarget_netをonline_netで上書きする
                 if steps % update_target == 0:
                     update_target_model(online_net, target_net)
+
+            ### 次のステップ
+            previous_state = state
+            state = next_state
 
         print("Ep {0:04d}: {1} step".format(e, steps - steps_before))
         steps_before = steps
