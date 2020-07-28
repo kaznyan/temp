@@ -10,10 +10,11 @@ Transition = namedtuple('Transition', ('state', 'next_state', 'action', 'reward'
 
 
 class Memory(object):
-    def __init__(self, capacity, memory_dir):
+    def __init__(self, capacity, memory_dir, n_states):
         # self.memory = deque(maxlen=capacity)
         self.capacity = capacity
         self.memory_dir = memory_dir
+        self.n_states = n_states
         if os.path.exists(self.memory_dir):
             shutil.rmtree(self.memory_dir)
         os.mkdir(self.memory_dir)
@@ -53,8 +54,8 @@ class Memory(object):
         rand_list = np.random.randint(0, self.capacity, [batch_size])
 
         batch = {}
-        state_list      = np.zeros((batch_size, 1024))
-        next_state_list = np.zeros((batch_size, 1024))
+        state_list      = np.zeros((batch_size, self.n_states))
+        next_state_list = np.zeros((batch_size, self.n_states))
         action_list     = np.zeros((batch_size, 2))
         reward_list     = np.zeros((batch_size, 1))
         mask_list       = np.zeros((batch_size, 1))

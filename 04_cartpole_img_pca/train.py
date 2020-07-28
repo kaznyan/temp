@@ -6,6 +6,10 @@ import random
 
 import cv2
 import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
 import gym
 
 import torch
@@ -39,9 +43,12 @@ def main():
     env.seed(500)
     torch.manual_seed(500)
 
+    ### 第10主成分までで累積寄与率48%、第20主成分までで累積寄与率62%　適宜増やしたり減らしたりする
+    num_pca = 10
+
     ### NNのIn-Outは環境によって異なる
     # num_inputs = env.observation_space.shape[0]
-    num_inputs = 1024
+    num_inputs = num_pca * 2
     num_actions = env.action_space.n
     print('state size:', num_inputs)
     print('action size:', num_actions)
@@ -67,6 +74,15 @@ def main():
     pre_model.classifier = nn.AdaptiveAvgPool2d((1,1))
     pre_model.to(device)
 
+    ### PCAによる次元圧縮を準備
+    raw_data = np.asarray(pd.read_csv("raw.csv"))
+    sc = StandardScaler()
+    std_data = sc.fit_transform(raw_data)
+    pca = PCA(n_components=num_pca)
+    pca.fit(std_data)
+    del raw_data
+    del std_data
+
     def state_to_feature(state):
         state_img = render_cv2img(state[0], state[2])
         state_img = cv2.resize(state_img, (224, 224))[:, :, 0]
@@ -77,12 +93,18 @@ def main():
         state_img_rgb[:, 2] = state_img
         state_img_rgb_tensor = torch.Tensor(state_img_rgb).to(device)
 
-        state_feature = pre_model(state_img_rgb_tensor)
+        ### 学習済みNNで特徴抽出
+        state_feature = pre_model(state_img_rgb_tensor).detach().numpy()
+        ### 主成分モデルを使って次元削減
+        state_feature = pca.transform(state_feature)
+        ### pytorch型に戻す
+        state_feature = torch.from_numpy(state_feature.astype(np.float32))
+
         return state_feature
 
     ### メモリの保存場所（改修中）
     memory_dir = "memory/"
-    memory = Memory(replay_memory_capacity, memory_dir)
+    memory = Memory(replay_memory_capacity, memory_dir, num_inputs)
 
     ### 学習前の初期設定
     running_score = 0
@@ -98,7 +120,7 @@ def main():
 
         ### state = [位置, 速度, 角度, 角速度]
         state = env.reset() ### [-0.01517264  0.02423424  0.02480018 -0.04009749]
-        ### state = [[2048次元のベクトル]]
+        ### state = [[512次元のベクトル]]
         state = state_to_feature(state)
 
         ### 前の時間の情報が無いときついため、それを入れるためのもの　最初はstateと同値でよさそう
