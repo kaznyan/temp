@@ -25,11 +25,16 @@ class QNet(nn.Module):
     @classmethod
     def train_model(cls, online_net, target_net, optimizer, batch):
         ### 経験データの取り出し
-        states = torch.stack(batch.state)
-        next_states = torch.stack(batch.next_state)
-        actions = torch.Tensor(batch.action).float()
-        rewards = torch.Tensor(batch.reward)
-        masks = torch.Tensor(batch.mask)
+        # states = torch.stack(batch.state)
+        # next_states = torch.stack(batch.next_state)
+        # actions = torch.Tensor(batch.action).float()
+        # rewards = torch.Tensor(batch.reward)
+        # masks = torch.Tensor(batch.mask)
+        states      = batch["state"]
+        next_states = batch["next_state"]
+        actions     = batch["action"]
+        rewards     = batch["reward"]
+        masks       = batch["mask"]
 
         ### 状態sにおけるQ(s, a1), Q(s, a2), ... を推論により求める × バッチ数
         pred = online_net(states).squeeze(1)
@@ -38,6 +43,7 @@ class QNet(nn.Module):
 
         ### Q(s, a)を求める　actionsはone-hotになっている
         pred = torch.sum(pred.mul(actions), dim=1)
+
         ### rt + γ max(Q(s', a))
         target = rewards + masks * gamma * next_pred.max(1)[0]
 
@@ -52,7 +58,7 @@ class QNet(nn.Module):
         ###     Q値を推論するNNのtargetを rt + γ max(Q(s(t+1), a')) とすることでうまく学習できる
         loss = F.mse_loss(pred, target.detach())
         optimizer.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)
         optimizer.step()
         return loss
 
