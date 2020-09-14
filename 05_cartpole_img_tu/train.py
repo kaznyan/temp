@@ -29,7 +29,8 @@ if is_ipython:
 plt.ion()
 
 # if gpu is to be used
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 
 ### ------ env
@@ -124,7 +125,7 @@ def img_to_tensor(img):
     return img_tensor
 
 ### ------training
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
@@ -146,7 +147,7 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.RMSprop(policy_net.parameters())
-memory = ReplayMemory(10000)
+memory = ReplayMemory(3000)
 
 steps_done = 0
 
@@ -234,7 +235,7 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 50
+num_episodes = 500000
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     _state = env.reset()
